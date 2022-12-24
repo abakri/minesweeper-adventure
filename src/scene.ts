@@ -64,12 +64,6 @@ export default class MainGame extends Phaser.Scene {
                     position,
                     isBomb
                 )
-                if (y === this.hero.tileY() && x === this.hero.tileX()) tile.uncovered = true
-                surroundingHeroStart.forEach(pos => {
-                    if (isEqual(pos, position)) {
-                        tile.uncovered = true
-                    }
-                })
                 row.push(tile)
             }
             this.map.push(row)
@@ -83,6 +77,9 @@ export default class MainGame extends Phaser.Scene {
                 if (numBombs !== 0) tile.numAdjBombs = numBombs
             }
         }
+
+        // uncover hero surrounding tiles
+        uncoverConnectedSafeTiles(this.map, this.heroTileStartPosition.x, this.heroTileStartPosition.y)
     }
 
     preload() {
