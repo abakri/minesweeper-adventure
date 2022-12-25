@@ -2,13 +2,13 @@ import Phaser from 'phaser'
 import GameConfig from './gameConfig'
 import { Hero, Tile } from './models'
 import { Direction, Point } from './types'
-import { createBombLocations, getSurroundingPoints, numSurroundingBombs, outOfBounds } from './utils'
-import { isEqual } from "lodash"
-import { uncoverConnectedSafeTiles } from './algo'
+import { createBombLocations, getSurroundingEightPoints, numSurroundingBombs, outOfBounds } from './utils'
+import { isEqual, sampleSize } from "lodash"
+import { reachablePoints, uncoverConnectedSafeTiles } from './algo'
 
 const {
-    WIDTH,
-    HEIGHT,
+    TILES_WIDE,
+    TILES_HIGH,
     TILE_SIZE,
     MAX_BOMBS,
     MIN_BOMBS,
@@ -35,19 +35,25 @@ const playerDirectionFrameMapping = {
     [Direction.RIGHT]: 12,
 }
 
+interface SpriteMap {
+    tile: Phaser.GameObjects.Sprite,
+    key: Phaser.GameObjects.Sprite | null
+}
+
 export default class MainGame extends Phaser.Scene {
     tileSize: integer = TILE_SIZE
-    tilesWide: integer = WIDTH / TILE_SIZE
-    tilesHigh: integer = HEIGHT / TILE_SIZE
+    tilesWide: integer = TILES_WIDE
+    tilesHigh: integer = TILES_HIGH
     maxBombs: integer = MAX_BOMBS
     numBombs: integer = Math.floor(Math.random() * (MAX_BOMBS - MIN_BOMBS)) + MIN_BOMBS
     heroTileStartPosition: Point
-    bombLocations: Array<Point>
+    bombLocations: Point[]
     hero: Hero
     map: Tile[][]
     graphics: Phaser.GameObjects.Graphics | null = null
     heroSprite: Phaser.GameObjects.Sprite | null = null
-    tileSpriteMap: Phaser.GameObjects.Sprite[][] = []
+    tileSpriteMap: SpriteMap[][] = []
+    keyLocations: Point[]
 
 
     constructor() {
@@ -56,7 +62,7 @@ export default class MainGame extends Phaser.Scene {
             x: Math.floor(Math.random() * this.tilesWide),
             y: Math.floor(Math.random() * this.tilesHigh),
         }
-        const surroundingHeroStart = getSurroundingPoints(this.heroTileStartPosition, this.tilesHigh - 1, this.tilesWide - 1)
+        const surroundingHeroStart = getSurroundingEightPoints(this.heroTileStartPosition, this.tilesHigh - 1, this.tilesWide - 1)
         this.bombLocations = createBombLocations(
             this.numBombs,
             this.tilesWide,
@@ -89,6 +95,9 @@ export default class MainGame extends Phaser.Scene {
             this.map.push(row)
         }
 
+        // get the reachable points for hero
+        this.keyLocations = sampleSize(reachablePoints(this.map, this.hero.tileX(), this.hero.tileY()), GameConfig.NUM_KEYS)
+
         // set the tile numbers
         for (let y = 0; y < this.tilesHigh; y++) {
             for (let x = 0; x < this.tilesWide; x++) {
@@ -99,7 +108,7 @@ export default class MainGame extends Phaser.Scene {
         }
 
         // uncover hero surrounding tiles
-        uncoverConnectedSafeTiles(this.map, this.heroTileStartPosition.x, this.heroTileStartPosition.y)
+        const numUncoveredTiles = uncoverConnectedSafeTiles(this.map, this.heroTileStartPosition.x, this.heroTileStartPosition.y)
     }
 
     preload() {
@@ -111,15 +120,19 @@ export default class MainGame extends Phaser.Scene {
             frameWidth: 64,
             frameHeight: 64,
         })
+        this.load.spritesheet("key", "key.png", {
+            frameWidth: 32,
+            frameHeight: 32,
+        })
     }
 
     create() {
         this.graphics = this.add.graphics()
-        this.graphics.setDepth(2)
+        this.graphics.setDepth(3)
 
         // init hero sprite
         this.heroSprite = this.add.sprite(0, 0, "hero");
-        this.heroSprite.setDepth(3)
+        this.heroSprite.setDepth(4)
         this.heroSprite.scale = 2
 
         // init animations
@@ -127,19 +140,38 @@ export default class MainGame extends Phaser.Scene {
 
         // create tileSprites
         for (let y = 0; y < this.tilesHigh; y++) {
-            const row: Phaser.GameObjects.Sprite[] = []
+            const row: SpriteMap[] = []
             for (let x = 0; x < this.tilesWide; x++) {
+                const currPosition: Point = { x, y }
                 const tileSprite = this.add.sprite(x * this.tileSize + this.tileSize / 2, y * this.tileSize + this.tileSize / 2, "grass", grassTileFrameMapping.TALL_GRASS)
                 tileSprite.setScale(0.75)
                 tileSprite.setDepth(1)
-                row.push(tileSprite)
+
+                let hasKey = false
+                let keySprite: Phaser.GameObjects.Sprite | null = null
+                this.keyLocations.forEach(loc => {
+                    if (isEqual(loc, currPosition)) {
+                        hasKey = true
+                    }
+                })
+
+                if (hasKey) {
+                    // keySprite = this.add.sprite(x * this.tileSize + this.tileSize / 2, y * this.tileSize + this.tileSize / 2, "key", 0)
+                    // keySprite.setScale(1.5)
+                    // keySprite.setDepth(1)
+                }
+
+                row.push({
+                    tile: tileSprite,
+                    key: keySprite,
+                })
             }
             this.tileSpriteMap.push(row)
         }
 
         this.cameras.main.startFollow(this.heroSprite)
         // uncomment to set bounds to scrolling
-        // this.cameras.main.setBounds(0, 0, WIDTH, HEIGHT)
+        this.cameras.main.setBounds(0, 0, this.tileSize * this.tilesWide, this.tileSize * this.tilesHigh)
         this.cameras.main.roundPixels = true;
         this.drawMap(this.graphics)
     }
@@ -174,7 +206,7 @@ export default class MainGame extends Phaser.Scene {
                 if (this.hero.direction === direction && !nextOOB) {
                     this.hero.beginMove()
                     this.heroSprite?.anims.play(this.hero.direction.toString())
-                    uncoverConnectedSafeTiles(this.map, this.hero.toTileX(), this.hero.toTileY())
+                    const numUncoveredTiles = uncoverConnectedSafeTiles(this.map, this.hero.toTileX(), this.hero.toTileY())
                 }
                 else {
                     this.hero.isChangingDirections = true
@@ -216,16 +248,7 @@ export default class MainGame extends Phaser.Scene {
         for (let y = 0; y < this.tilesHigh; y++) {
             for (let x = 0; x < this.tilesWide; x++) {
                 const tile = this.map[y][x]
-                // const tileColor = tile.uncovered ? 0xb5b5b5 : 0x8f8f8f
-                // graphics.fillStyle(tileColor)
-                // graphics.lineStyle(0.5, 0x000000)
-                // graphics.fillRect(
-                //     x * this.tileSize, y * this.tileSize, this.tileSize, this.tileSize,
-                // )
-                // graphics.strokeRect(
-                //     x * this.tileSize, y * this.tileSize, this.tileSize, this.tileSize
-                // )
-                const tileSprite = this.tileSpriteMap[y][x]
+                const {tile: tileSprite, key: keySprite} = this.tileSpriteMap[y][x]
                 if (tile.uncovered) {
                     if (tile.bomb || !tile.numAdjBombs) tileSprite.setFrame(grassTileFrameMapping.NORMAL)
                     else if (tile.numAdjBombs === 1) tileSprite.setFrame(grassTileFrameMapping.ONE)
