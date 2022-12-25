@@ -28,6 +28,13 @@ enum grassTileFrameMapping {
     EIGHT = 9,
 }
 
+const playerDirectionFrameMapping = {
+    [Direction.DOWN]: 0,
+    [Direction.UP]: 4,
+    [Direction.LEFT]: 8,
+    [Direction.RIGHT]: 12,
+}
+
 export default class MainGame extends Phaser.Scene {
     tileSize: integer = TILE_SIZE
     tilesWide: integer = WIDTH / TILE_SIZE
@@ -173,6 +180,7 @@ export default class MainGame extends Phaser.Scene {
                     this.hero.isChangingDirections = true
                     this.time.delayedCall(150, () => { this.hero.isChangingDirections = false })
                     this.hero.direction = direction
+                    this.heroSprite?.setFrame(playerDirectionFrameMapping[this.hero.direction])
                 }
                 return
             }
