@@ -9,7 +9,7 @@ const config = {
     width: WIDTH,
     height: HEIGHT,
     autoCenter: true,
-    backgroundColor: 0xa9a9a9,
+    backgroundColor: 0xe1f6ff,
     scene: MainGame,
 }
 

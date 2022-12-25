@@ -15,6 +15,19 @@ const {
     HERO_SPEED,
 } = GameConfig
 
+enum grassTileFrameMapping {
+    TALL_GRASS = 0,
+    NORMAL = 1,
+    ONE = 2,
+    TWO = 3,
+    THREE = 4,
+    FOUR = 5,
+    FIVE = 6,
+    SIX = 7,
+    SEVEN = 8,
+    EIGHT = 9,
+}
+
 export default class MainGame extends Phaser.Scene {
     tileSize: integer = TILE_SIZE
     tilesWide: integer = WIDTH / TILE_SIZE
@@ -26,12 +39,12 @@ export default class MainGame extends Phaser.Scene {
     hero: Hero
     map: Tile[][]
     graphics: Phaser.GameObjects.Graphics | null = null
-    textList: Phaser.GameObjects.Text[]
+    heroSprite: Phaser.GameObjects.Sprite | null = null
+    tileSpriteMap: Phaser.GameObjects.Sprite[][] = []
 
 
     constructor() {
         super("Main")
-        this.textList = []
         this.heroTileStartPosition = {
             x: Math.floor(Math.random() * this.tilesWide),
             y: Math.floor(Math.random() * this.tilesHigh),
@@ -56,7 +69,7 @@ export default class MainGame extends Phaser.Scene {
                 const position = { x, y }
                 let isBomb = false
                 this.bombLocations.forEach(loc => {
-                    if (isEqual(loc, position)){
+                    if (isEqual(loc, position)) {
                         isBomb = true
                     }
                 })
@@ -83,10 +96,44 @@ export default class MainGame extends Phaser.Scene {
     }
 
     preload() {
+        this.load.spritesheet("hero", "character.png", {
+            frameWidth: 48,
+            frameHeight: 48,
+        });
+        this.load.spritesheet("grass", "grass.png", {
+            frameWidth: 64,
+            frameHeight: 64,
+        })
     }
 
     create() {
         this.graphics = this.add.graphics()
+        this.graphics.setDepth(2)
+
+        // init hero sprite
+        this.heroSprite = this.add.sprite(0, 0, "hero");
+        this.heroSprite.setDepth(3)
+        this.heroSprite.scale = 2
+
+        // init animations
+        this.initAnimations()
+
+        // create tileSprites
+        for (let y = 0; y < this.tilesHigh; y++) {
+            const row: Phaser.GameObjects.Sprite[] = []
+            for (let x = 0; x < this.tilesWide; x++) {
+                const tileSprite = this.add.sprite(x * this.tileSize + this.tileSize / 2, y * this.tileSize + this.tileSize / 2, "grass", grassTileFrameMapping.TALL_GRASS)
+                tileSprite.setScale(0.75)
+                tileSprite.setDepth(1)
+                row.push(tileSprite)
+            }
+            this.tileSpriteMap.push(row)
+        }
+
+        this.cameras.main.startFollow(this.heroSprite)
+        // uncomment to set bounds to scrolling
+        // this.cameras.main.setBounds(0, 0, WIDTH, HEIGHT)
+        this.cameras.main.roundPixels = true;
         this.drawMap(this.graphics)
     }
 
@@ -111,7 +158,7 @@ export default class MainGame extends Phaser.Scene {
         for (let i = 0; i < iter.length; i++) {
             const { cursor, direction } = iter[i]
             if (cursor.isDown) {
-                const {x: dx, y: dy} = Direction.vector(this.hero.direction)
+                const { x: dx, y: dy } = Direction.vector(this.hero.direction)
                 const nextTilePosition = {
                     x: this.hero.tileX() + dx,
                     y: this.hero.tileY() + dy,
@@ -119,6 +166,7 @@ export default class MainGame extends Phaser.Scene {
                 const nextOOB = outOfBounds(nextTilePosition.x, nextTilePosition.y, this.tilesWide, this.tilesHigh)
                 if (this.hero.direction === direction && !nextOOB) {
                     this.hero.beginMove()
+                    this.heroSprite?.anims.play(this.hero.direction.toString())
                     uncoverConnectedSafeTiles(this.map, this.hero.toTileX(), this.hero.toTileY())
                 }
                 else {
@@ -142,8 +190,12 @@ export default class MainGame extends Phaser.Scene {
 
         if (isEqual(this.hero.position, this.hero.moveTo)) {
             this.hero.isMoving = false
+            const standingFrame = this.heroSprite?.anims.currentAnim.frames[1].frame.name || 0
+            this.heroSprite?.anims.stop()
+            this.heroSprite?.setFrame(standingFrame);
             const tile = this.map[this.hero.tileY()][this.hero.tileX()]
-            if (tile.bomb){
+            if (tile.bomb) {
+                this.cameras.main.shake(250, 0.006)
                 console.log("GAME OVER!")
             }
         }
@@ -156,19 +208,26 @@ export default class MainGame extends Phaser.Scene {
         for (let y = 0; y < this.tilesHigh; y++) {
             for (let x = 0; x < this.tilesWide; x++) {
                 const tile = this.map[y][x]
-                const tileColor = tile.uncovered ? 0xb5b5b5 : 0x8f8f8f
-                graphics.fillStyle(tileColor)
-                graphics.lineStyle(0.5, 0x000000)
-                graphics.fillRect(
-                    x * this.tileSize, y * this.tileSize, this.tileSize, this.tileSize,
-                )
-                graphics.strokeRect(
-                    x * this.tileSize, y * this.tileSize, this.tileSize, this.tileSize
-                )
-
-                // draw the numbers
+                // const tileColor = tile.uncovered ? 0xb5b5b5 : 0x8f8f8f
+                // graphics.fillStyle(tileColor)
+                // graphics.lineStyle(0.5, 0x000000)
+                // graphics.fillRect(
+                //     x * this.tileSize, y * this.tileSize, this.tileSize, this.tileSize,
+                // )
+                // graphics.strokeRect(
+                //     x * this.tileSize, y * this.tileSize, this.tileSize, this.tileSize
+                // )
+                const tileSprite = this.tileSpriteMap[y][x]
                 if (tile.uncovered) {
-                    const style = { font: "32px Arial", fill: "#0000ff", align: "center" }
+                    if (tile.bomb || !tile.numAdjBombs) tileSprite.setFrame(grassTileFrameMapping.NORMAL)
+                    else if (tile.numAdjBombs === 1) tileSprite.setFrame(grassTileFrameMapping.ONE)
+                    else if (tile.numAdjBombs === 2) tileSprite.setFrame(grassTileFrameMapping.TWO)
+                    else if (tile.numAdjBombs === 3) tileSprite.setFrame(grassTileFrameMapping.THREE)
+                    else if (tile.numAdjBombs === 4) tileSprite.setFrame(grassTileFrameMapping.FOUR)
+                    else if (tile.numAdjBombs === 5) tileSprite.setFrame(grassTileFrameMapping.FIVE)
+                    else if (tile.numAdjBombs === 6) tileSprite.setFrame(grassTileFrameMapping.SIX)
+                    else if (tile.numAdjBombs === 7) tileSprite.setFrame(grassTileFrameMapping.SEVEN)
+                    else if (tile.numAdjBombs === 8) tileSprite.setFrame(grassTileFrameMapping.EIGHT)
                 }
             }
         }
@@ -182,47 +241,46 @@ export default class MainGame extends Phaser.Scene {
         })
 
         // draw hero
-        graphics.fillStyle(0xff0000)
-        graphics.fillCircle(this.hero.position.x + this.tileSize / 2, this.hero.position.y + this.tileSize / 2, this.tileSize / 2)
+        this.heroSprite?.setPosition(this.hero.position.x + this.tileSize / 2, this.hero.position.y + this.tileSize / 2)
+    }
 
-        // draw hero direction
-        graphics.fillStyle(0x00ff00)
-        switch (this.hero.direction) {
-            case Direction.UP:
-                graphics.fillCircle(
-                    this.hero.position.x + this.tileSize / 2,
-                    this.hero.position.y + 2,
-                    2,
-                )
-                break
-            case Direction.DOWN:
-                graphics.fillCircle(
-                    this.hero.position.x + this.tileSize / 2,
-                    this.hero.position.y + this.tileSize - 2,
-                    2,
-                )
-                break
-            case Direction.LEFT:
-                graphics.fillCircle(
-                    this.hero.position.x + 2,
-                    this.hero.position.y + this.tileSize / 2,
-                    2,
-                )
-                break
-            case Direction.RIGHT:
-                graphics.fillCircle(
-                    this.hero.position.x + this.tileSize - 2,
-                    this.hero.position.y + this.tileSize / 2,
-                    2,
-                )
-                break
-            default:
-                graphics.fillCircle(
-                    this.hero.position.x + this.tileSize / 2,
-                    this.hero.position.y + 2,
-                    2,
-                )
-        }
-
+    initAnimations() {
+        // init hero animations
+        this.anims.create({
+            key: Direction.DOWN.toString(),
+            frames: this.anims.generateFrameNumbers("hero", {
+                start: 0,
+                end: 3,
+            }),
+            frameRate: 10,
+            repeat: -1,
+        })
+        this.anims.create({
+            key: Direction.UP.toString(),
+            frames: this.anims.generateFrameNumbers("hero", {
+                start: 4,
+                end: 7,
+            }),
+            frameRate: 10,
+            repeat: -1,
+        })
+        this.anims.create({
+            key: Direction.LEFT.toString(),
+            frames: this.anims.generateFrameNumbers("hero", {
+                start: 8,
+                end: 11,
+            }),
+            frameRate: 10,
+            repeat: -1,
+        })
+        this.anims.create({
+            key: Direction.RIGHT.toString(),
+            frames: this.anims.generateFrameNumbers("hero", {
+                start: 12,
+                end: 15,
+            }),
+            frameRate: 10,
+            repeat: -1,
+        })
     }
 }

@@ -1,9 +1,9 @@
 const GameConfig = {
-    WIDTH: 1000,
-    HEIGHT: 1000,
-    TILE_SIZE: 40,
-    MAX_BOMBS: 150,
-    MIN_BOMBS: 130,
+    WIDTH: 768,
+    HEIGHT: 768,
+    TILE_SIZE: 48,
+    MAX_BOMBS: 110,
+    MIN_BOMBS: 90,
     HERO_SPEED: 4,
 }
 
