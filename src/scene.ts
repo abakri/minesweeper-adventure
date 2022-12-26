@@ -1,4 +1,4 @@
-import Phaser from 'phaser'
+import Phaser, { Game } from 'phaser'
 import GameConfig from './gameConfig'
 import { Hero, Tile } from './models'
 import { Direction, Point } from './types'
@@ -38,6 +38,7 @@ const playerDirectionFrameMapping = {
 interface SpriteMap {
     tile: Phaser.GameObjects.Sprite,
     key: Phaser.GameObjects.Sprite | null
+    bomb: Phaser.GameObjects.Image | null
 }
 
 export default class MainGame extends Phaser.Scene {
@@ -50,10 +51,13 @@ export default class MainGame extends Phaser.Scene {
     bombLocations: Point[]
     hero: Hero
     map: Tile[][]
-    graphics: Phaser.GameObjects.Graphics | null = null
     heroSprite: Phaser.GameObjects.Sprite | null = null
+    scoreDisplay: Phaser.GameObjects.Text | null = null
     tileSpriteMap: SpriteMap[][] = []
     keyLocations: Point[]
+    numKeysRetrieved: integer = 0
+    livesRemaining: integer = 2
+    livesDisplay: Phaser.GameObjects.Image[] = []
 
 
     constructor() {
@@ -97,6 +101,7 @@ export default class MainGame extends Phaser.Scene {
 
         // get the reachable points for hero
         this.keyLocations = sampleSize(reachablePoints(this.map, this.hero.tileX(), this.hero.tileY()), GameConfig.NUM_KEYS)
+        this.keyLocations.forEach(({x, y}) => {this.map[y][x].key = true}) // set the key for each tile that has one
 
         // set the tile numbers
         for (let y = 0; y < this.tilesHigh; y++) {
@@ -108,7 +113,7 @@ export default class MainGame extends Phaser.Scene {
         }
 
         // uncover hero surrounding tiles
-        const numUncoveredTiles = uncoverConnectedSafeTiles(this.map, this.heroTileStartPosition.x, this.heroTileStartPosition.y)
+        uncoverConnectedSafeTiles(this.map, this.heroTileStartPosition.x, this.heroTileStartPosition.y)
     }
 
     preload() {
@@ -124,11 +129,27 @@ export default class MainGame extends Phaser.Scene {
             frameWidth: 32,
             frameHeight: 32,
         })
+        this.load.image("heart", "heart.png")
+        this.load.image("bomb", "bomb.png")
     }
 
     create() {
-        this.graphics = this.add.graphics()
-        this.graphics.setDepth(3)
+        // add key text
+        this.scoreDisplay = this.add.text(3, 3, `${this.numKeysRetrieved}/${GameConfig.NUM_KEYS}`, { fontFamily: "arial", fontSize: `30px`})
+        this.scoreDisplay.setDepth(100)
+        this.scoreDisplay.setScrollFactor(0) // so it's static on the main camera
+
+        // add lives
+        for(let i = 0;i < GameConfig.NUM_LIVES; i++) {
+            const heartImage = this.add.image(GameConfig.SCREEN_WIDTH - ((1 +i) * this.tileSize) + this.tileSize /2, this.tileSize/2, "heart")
+            heartImage.setDepth(99)
+            heartImage.setScrollFactor(0)
+            heartImage.setScale(0.5)
+            this.livesDisplay.push(
+                heartImage
+            )
+
+        }
 
         // init hero sprite
         this.heroSprite = this.add.sprite(0, 0, "hero");
@@ -155,15 +176,33 @@ export default class MainGame extends Phaser.Scene {
                     }
                 })
 
+                let hasBomb = false
+                let bombSprite: Phaser.GameObjects.Sprite | null = null
+                this.bombLocations.forEach(loc => {
+                    if (isEqual(loc, currPosition)) {
+                        hasBomb = true
+                    }
+                }) 
+
                 if (hasKey) {
-                    // keySprite = this.add.sprite(x * this.tileSize + this.tileSize / 2, y * this.tileSize + this.tileSize / 2, "key", 0)
-                    // keySprite.setScale(1.5)
-                    // keySprite.setDepth(1)
+                    keySprite = this.add.sprite(x * this.tileSize + this.tileSize / 2, y * this.tileSize + this.tileSize / 2, "key", 0)
+                    // keySprite.setScale(1)
+                    keySprite.setDepth(5)
+                    keySprite.anims.play("spin")
+                    keySprite.setVisible(false)
+                }
+
+                else if (hasBomb) {
+                    bombSprite = this.add.sprite(x * this.tileSize + this.tileSize /2, y * this.tileSize + this.tileSize / 2, "bomb")
+                    bombSprite.setDepth(3)
+                    bombSprite.setVisible(false)
+                    bombSprite.setScale(0.3)
                 }
 
                 row.push({
                     tile: tileSprite,
                     key: keySprite,
+                    bomb: bombSprite
                 })
             }
             this.tileSpriteMap.push(row)
@@ -173,14 +212,13 @@ export default class MainGame extends Phaser.Scene {
         // uncomment to set bounds to scrolling
         this.cameras.main.setBounds(0, 0, this.tileSize * this.tilesWide, this.tileSize * this.tilesHigh)
         this.cameras.main.roundPixels = true;
-        this.drawMap(this.graphics)
+        this.drawMap()
     }
 
     update() {
-        this.graphics?.clear()
         this.listenInput()
         this.moveHero()
-        this.drawMap(this.graphics)
+        this.drawMap()
     }
 
     listenInput(): void {
@@ -206,7 +244,20 @@ export default class MainGame extends Phaser.Scene {
                 if (this.hero.direction === direction && !nextOOB) {
                     this.hero.beginMove()
                     this.heroSprite?.anims.play(this.hero.direction.toString())
-                    const numUncoveredTiles = uncoverConnectedSafeTiles(this.map, this.hero.toTileX(), this.hero.toTileY())
+                    uncoverConnectedSafeTiles(this.map, this.hero.toTileX(), this.hero.toTileY())
+
+                    // if there is a key in the next tile, remove it
+                    const tile = this.map[this.hero.toTileY()][this.hero.toTileX()]
+                    if (tile.key) {
+                        tile.key = false
+                        const spriteMap = this.tileSpriteMap[this.hero.toTileY()][this.hero.toTileX()]
+                        const key = spriteMap.key
+                        key?.destroy()
+                        spriteMap.key = null
+                        this.numKeysRetrieved += 1
+                        this.scoreDisplay?.setText(`${this.numKeysRetrieved}/${GameConfig.NUM_KEYS}`)
+                        if (this.numKeysRetrieved === GameConfig.NUM_KEYS) console.log("YOU WIN!")
+                    }
                 }
                 else {
                     this.hero.isChangingDirections = true
@@ -236,21 +287,32 @@ export default class MainGame extends Phaser.Scene {
             const tile = this.map[this.hero.tileY()][this.hero.tileX()]
             if (tile.bomb) {
                 this.cameras.main.shake(250, 0.006)
-                console.log("GAME OVER!")
+                this.livesRemaining -= 1
+                const heartToRemove = this.livesDisplay.pop()
+                heartToRemove?.destroy()
+
+                if (this.livesRemaining === 0) {
+                    // this.scene.restart()
+                    console.log("GAME OVER!")
+                }
             }
         }
 
     }
 
-    drawMap(graphics: Phaser.GameObjects.Graphics | null): void {
-        if (!graphics) return
+    drawMap(): void {
         // draw map
         for (let y = 0; y < this.tilesHigh; y++) {
             for (let x = 0; x < this.tilesWide; x++) {
                 const tile = this.map[y][x]
-                const {tile: tileSprite, key: keySprite} = this.tileSpriteMap[y][x]
+                // remove the keySprite if the key is obtained
+                const { tile: tileSprite, key: keySprite, bomb: bombSprite} = this.tileSpriteMap[y][x]
                 if (tile.uncovered) {
-                    if (tile.bomb || !tile.numAdjBombs) tileSprite.setFrame(grassTileFrameMapping.NORMAL)
+                    if (tile.bomb || !tile.numAdjBombs || tile.key) {
+                        tileSprite.setFrame(grassTileFrameMapping.NORMAL)
+                        if(tile.key) keySprite?.setVisible(true)
+                        if(tile.bomb) bombSprite?.setVisible(true)
+                    }
                     else if (tile.numAdjBombs === 1) tileSprite.setFrame(grassTileFrameMapping.ONE)
                     else if (tile.numAdjBombs === 2) tileSprite.setFrame(grassTileFrameMapping.TWO)
                     else if (tile.numAdjBombs === 3) tileSprite.setFrame(grassTileFrameMapping.THREE)
@@ -263,16 +325,24 @@ export default class MainGame extends Phaser.Scene {
             }
         }
 
-        // draw bombs
-        this.bombLocations.forEach(point => {
-            const tile = this.map[point.y][point.x]
-            if (!tile.uncovered) return
-            graphics.fillStyle(0x000000)
-            graphics.fillCircle(point.x * this.tileSize + this.tileSize / 2, point.y * this.tileSize + this.tileSize / 2, this.tileSize / 2)
-        })
-
         // draw hero
         this.heroSprite?.setPosition(this.hero.position.x + this.tileSize / 2, this.hero.position.y + this.tileSize / 2)
+
+        // reduce the alpha of text if the hero is in position 0,0
+        if(this.hero.moveTo.x === 0 && this.hero.moveTo.y === 0 && this.scoreDisplay) this.scoreDisplay.alpha = 0.7
+        else if (this.scoreDisplay) this.scoreDisplay.alpha = 1
+
+        // reduce the alpha of lives if the hero is in position 0,0
+        if(this.hero.toTileY() === 0 && [this.tilesWide - 1, this.tilesWide -2].includes(this.hero.toTileX())){
+            this.livesDisplay.forEach(heart => {
+                heart.alpha = 0.6
+            })
+        }
+        else{
+            this.livesDisplay.forEach(heart => {
+                heart.alpha = 1
+            })
+        }
     }
 
     initAnimations() {
@@ -311,6 +381,17 @@ export default class MainGame extends Phaser.Scene {
                 end: 15,
             }),
             frameRate: 10,
+            repeat: -1,
+        })
+
+        // init key animation
+        this.anims.create({
+            key: "spin",
+            frames: this.anims.generateFrameNumbers("key", {
+                start: 0,
+                end: 11,
+            }),
+            frameRate: 8,
             repeat: -1,
         })
     }

@@ -1,10 +1,14 @@
 const GameConfig = {
+    SCREEN_HEIGHT: 800,
+    SCREEN_WIDTH: 800,
     TILES_WIDE: 20,
     TILES_HIGH: 20,
     TILE_SIZE: 48,
-    MAX_BOMBS: 80,
-    MIN_BOMBS: 70,
+    MAX_BOMBS: 70,
+    MIN_BOMBS: 60,
     HERO_SPEED: 4,
+    NUM_KEYS: 10,
+    NUM_LIVES: 2,
 }
 
 // Test Game Config
