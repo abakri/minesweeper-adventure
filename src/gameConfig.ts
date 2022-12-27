@@ -8,7 +8,7 @@ const GameConfig = {
     MIN_BOMBS: 60,
     HERO_SPEED: 4,
     NUM_KEYS: 10,
-    NUM_LIVES: 2,
+    NUM_LIVES: 3,
 }
 
 // Test Game Config

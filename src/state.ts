@@ -3,7 +3,7 @@ import { Hero, Tile } from "./models"
 import { Point } from "./types"
 import { createBombLocations, getSurroundingEightPoints, numSurroundingBombs } from "./utils"
 import { isEqual, sampleSize } from "lodash"
-import { reachablePoints } from "./algo"
+import { reachablePoints, uncoverConnectedSafeTiles } from "./algo"
 
 export class GameState {
     numBombs: integer
@@ -15,13 +15,13 @@ export class GameState {
     livesRemaining: integer
 
     constructor() {
-        this.numKeysRetrieved = GameConfig.NUM_KEYS
+        this.numKeysRetrieved = 0
         this.livesRemaining = GameConfig.NUM_LIVES
 
         this.numBombs = Math.floor(Math.random() * (GameConfig.MAX_BOMBS - GameConfig.MIN_BOMBS)) + GameConfig.MIN_BOMBS
         this.hero = new Hero({
-            x: Math.floor(Math.random() * GameConfig.TILES_WIDE * GameConfig.TILE_SIZE),
-            y: Math.floor(Math.random() * GameConfig.TILES_HIGH * GameConfig.TILE_SIZE),
+            x: Math.floor(Math.random() * GameConfig.TILES_WIDE) * GameConfig.TILE_SIZE,
+            y: Math.floor(Math.random() * GameConfig.TILES_HIGH) * GameConfig.TILE_SIZE,
         })
         this.bombLocations = createBombLocations(
             this.numBombs,
@@ -61,5 +61,8 @@ export class GameState {
                 if (numBombs !== 0) tile.numAdjBombs = numBombs
             }
         }
+        
+        // uncover the tiles around where the hero is standing
+        uncoverConnectedSafeTiles(this.map, this.hero.tileX(), this.hero.tileY())
     }
 }

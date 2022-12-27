@@ -1,7 +1,9 @@
 import Phaser from "phaser"
 import GameConfig from "./gameConfig"
-import MainGame from "./scene";
-
+import loseMenu from "./loseMenu"
+import MainGame from "./scene"
+import startMenu from "./startMenu"
+import winMenu from "./winMenu"
 
 const config = {
     type: Phaser.AUTO,
@@ -9,7 +11,7 @@ const config = {
     height: GameConfig.SCREEN_HEIGHT,
     autoCenter: true,
     backgroundColor: 0x000000,
-    scene: [MainGame],
+    scene: [startMenu, MainGame, loseMenu, winMenu],
 }
 
 const game = new Phaser.Game(config)

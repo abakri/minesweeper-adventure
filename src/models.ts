@@ -19,8 +19,8 @@ export class Hero {
 
     tilePosition(): Point {
         return {
-            x: this.position.x / GameConfig.TILE_SIZE,
-            y: this.position.y / GameConfig.TILE_SIZE,
+            x: Math.floor(this.position.x / GameConfig.TILE_SIZE),
+            y: Math.floor(this.position.y / GameConfig.TILE_SIZE),
         }
     }
 
@@ -32,19 +32,19 @@ export class Hero {
     }
 
     tileX(): integer {
-        return this.position.x / GameConfig.TILE_SIZE
+        return Math.floor(this.position.x / GameConfig.TILE_SIZE)
     }
 
     tileY(): integer {
-        return this.position.y / GameConfig.TILE_SIZE
+        return Math.floor(this.position.y / GameConfig.TILE_SIZE)
     }
 
     toTileX(): integer {
-        return this.moveTo.x / GameConfig.TILE_SIZE
+        return Math.floor(this.moveTo.x / GameConfig.TILE_SIZE)
     }
 
     toTileY(): integer {
-        return this.moveTo.y / GameConfig.TILE_SIZE
+        return Math.floor(this.moveTo.y / GameConfig.TILE_SIZE)
     }
 
     beginMove(): void {

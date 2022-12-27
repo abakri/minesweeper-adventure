@@ -1,32 +1,11 @@
-import Phaser, { Game } from 'phaser'
+import Phaser from 'phaser'
 import GameConfig from './gameConfig'
-import { Hero, Tile } from './models'
-import { Direction, Point } from './types'
-import { createBombLocations, getSurroundingEightPoints, numSurroundingBombs, outOfBounds } from './utils'
-import { isEqual, sampleSize } from "lodash"
-import { reachablePoints, uncoverConnectedSafeTiles } from './algo'
-
-const {
-    TILES_WIDE,
-    TILES_HIGH,
-    TILE_SIZE,
-    MAX_BOMBS,
-    MIN_BOMBS,
-    HERO_SPEED,
-} = GameConfig
-
-enum grassTileFrameMapping {
-    TALL_GRASS = 0,
-    NORMAL = 1,
-    ONE = 2,
-    TWO = 3,
-    THREE = 4,
-    FOUR = 5,
-    FIVE = 6,
-    SIX = 7,
-    SEVEN = 8,
-    EIGHT = 9,
-}
+import { Direction } from './types'
+import { outOfBounds } from './utils'
+import { isEqual } from "lodash"
+import { uncoverConnectedSafeTiles } from './algo'
+import { GameState } from './state'
+import { DisplayState, grassTileFrameMapping } from './displayState'
 
 const playerDirectionFrameMapping = {
     [Direction.DOWN]: 0,
@@ -35,183 +14,48 @@ const playerDirectionFrameMapping = {
     [Direction.RIGHT]: 12,
 }
 
-interface SpriteMap {
-    tile: Phaser.GameObjects.Sprite,
-    key: Phaser.GameObjects.Sprite | null
-    bomb: Phaser.GameObjects.Image | null
-}
-
 export default class MainGame extends Phaser.Scene {
-    tileSize: integer = TILE_SIZE
-    tilesWide: integer = TILES_WIDE
-    tilesHigh: integer = TILES_HIGH
-    maxBombs: integer = MAX_BOMBS
-    numBombs: integer = Math.floor(Math.random() * (MAX_BOMBS - MIN_BOMBS)) + MIN_BOMBS
-    heroTileStartPosition: Point
-    bombLocations: Point[]
-    hero: Hero
-    map: Tile[][]
-    heroSprite: Phaser.GameObjects.Sprite | null = null
-    scoreDisplay: Phaser.GameObjects.Text | null = null
-    tileSpriteMap: SpriteMap[][] = []
-    keyLocations: Point[]
-    numKeysRetrieved: integer = 0
-    livesRemaining: integer = 2
-    livesDisplay: Phaser.GameObjects.Image[] = []
+    gameState!: GameState
+    displayState!: DisplayState
 
 
     constructor() {
-        super("Main")
-        this.heroTileStartPosition = {
-            x: Math.floor(Math.random() * this.tilesWide),
-            y: Math.floor(Math.random() * this.tilesHigh),
-        }
-        const surroundingHeroStart = getSurroundingEightPoints(this.heroTileStartPosition, this.tilesHigh - 1, this.tilesWide - 1)
-        this.bombLocations = createBombLocations(
-            this.numBombs,
-            this.tilesWide,
-            this.tilesWide,
-            [this.heroTileStartPosition, ...surroundingHeroStart],
-        )
-        this.hero = new Hero({
-            x: this.heroTileStartPosition.x * this.tileSize,
-            y: this.heroTileStartPosition.y * this.tileSize,
-        })
-
-        // create map
-        this.map = []
-        for (let y = 0; y < this.tilesHigh; y++) {
-            const row: Tile[] = []
-            for (let x = 0; x < this.tilesWide; x++) {
-                const position = { x, y }
-                let isBomb = false
-                this.bombLocations.forEach(loc => {
-                    if (isEqual(loc, position)) {
-                        isBomb = true
-                    }
-                })
-                const tile = new Tile(
-                    position,
-                    isBomb
-                )
-                row.push(tile)
-            }
-            this.map.push(row)
-        }
-
-        // get the reachable points for hero
-        this.keyLocations = sampleSize(reachablePoints(this.map, this.hero.tileX(), this.hero.tileY()), GameConfig.NUM_KEYS)
-        this.keyLocations.forEach(({x, y}) => {this.map[y][x].key = true}) // set the key for each tile that has one
-
-        // set the tile numbers
-        for (let y = 0; y < this.tilesHigh; y++) {
-            for (let x = 0; x < this.tilesWide; x++) {
-                const tile = this.map[y][x]
-                const numBombs = numSurroundingBombs(this.map, tile.position.x, tile.position.y)
-                if (numBombs !== 0) tile.numAdjBombs = numBombs
-            }
-        }
-
-        // uncover hero surrounding tiles
-        uncoverConnectedSafeTiles(this.map, this.heroTileStartPosition.x, this.heroTileStartPosition.y)
+        super("game")
     }
 
     preload() {
-        this.load.spritesheet("hero", "character.png", {
+        this.load.spritesheet("hero", "static/character.png", {
             frameWidth: 48,
             frameHeight: 48,
         });
-        this.load.spritesheet("grass", "grass.png", {
+        this.load.spritesheet("grass", "static/grass.png", {
             frameWidth: 64,
             frameHeight: 64,
         })
-        this.load.spritesheet("key", "key.png", {
+        this.load.spritesheet("key", "static/key.png", {
             frameWidth: 32,
             frameHeight: 32,
         })
-        this.load.image("heart", "heart.png")
-        this.load.image("bomb", "bomb.png")
+        this.load.image("heart", "static/heart.png")
+        this.load.image("bomb", "static/bomb.png")
     }
 
     create() {
-        // add key text
-        this.scoreDisplay = this.add.text(3, 3, `${this.numKeysRetrieved}/${GameConfig.NUM_KEYS}`, { fontFamily: "arial", fontSize: `30px`})
-        this.scoreDisplay.setDepth(100)
-        this.scoreDisplay.setScrollFactor(0) // so it's static on the main camera
-
-        // add lives
-        for(let i = 0;i < GameConfig.NUM_LIVES; i++) {
-            const heartImage = this.add.image(GameConfig.SCREEN_WIDTH - ((1 +i) * this.tileSize) + this.tileSize /2, this.tileSize/2, "heart")
-            heartImage.setDepth(99)
-            heartImage.setScrollFactor(0)
-            heartImage.setScale(0.5)
-            this.livesDisplay.push(
-                heartImage
-            )
-
-        }
-
-        // init hero sprite
-        this.heroSprite = this.add.sprite(0, 0, "hero");
-        this.heroSprite.setDepth(4)
-        this.heroSprite.scale = 2
+        // create a new GameState and DisplayState for each scene start
+        this.gameState = new GameState()
+        this.displayState = new DisplayState(this, this.gameState)
+        this.displayState.addObjects()
 
         // init animations
         this.initAnimations()
 
-        // create tileSprites
-        for (let y = 0; y < this.tilesHigh; y++) {
-            const row: SpriteMap[] = []
-            for (let x = 0; x < this.tilesWide; x++) {
-                const currPosition: Point = { x, y }
-                const tileSprite = this.add.sprite(x * this.tileSize + this.tileSize / 2, y * this.tileSize + this.tileSize / 2, "grass", grassTileFrameMapping.TALL_GRASS)
-                tileSprite.setScale(0.75)
-                tileSprite.setDepth(1)
-
-                let hasKey = false
-                let keySprite: Phaser.GameObjects.Sprite | null = null
-                this.keyLocations.forEach(loc => {
-                    if (isEqual(loc, currPosition)) {
-                        hasKey = true
-                    }
-                })
-
-                let hasBomb = false
-                let bombSprite: Phaser.GameObjects.Sprite | null = null
-                this.bombLocations.forEach(loc => {
-                    if (isEqual(loc, currPosition)) {
-                        hasBomb = true
-                    }
-                }) 
-
-                if (hasKey) {
-                    keySprite = this.add.sprite(x * this.tileSize + this.tileSize / 2, y * this.tileSize + this.tileSize / 2, "key", 0)
-                    // keySprite.setScale(1)
-                    keySprite.setDepth(5)
-                    keySprite.anims.play("spin")
-                    keySprite.setVisible(false)
-                }
-
-                else if (hasBomb) {
-                    bombSprite = this.add.sprite(x * this.tileSize + this.tileSize /2, y * this.tileSize + this.tileSize / 2, "bomb")
-                    bombSprite.setDepth(3)
-                    bombSprite.setVisible(false)
-                    bombSprite.setScale(0.3)
-                }
-
-                row.push({
-                    tile: tileSprite,
-                    key: keySprite,
-                    bomb: bombSprite
-                })
-            }
-            this.tileSpriteMap.push(row)
-        }
-
-        this.cameras.main.startFollow(this.heroSprite)
-        // uncomment to set bounds to scrolling
-        this.cameras.main.setBounds(0, 0, this.tileSize * this.tilesWide, this.tileSize * this.tilesHigh)
+        // setup camera
+        this.cameras.main.startFollow(this.displayState.heroSprite)
+        // use scrolling bounds so we dont pan off the edge of the map
+        this.cameras.main.setBounds(0, 0, GameConfig.TILE_SIZE * GameConfig.TILES_WIDE, GameConfig.TILE_SIZE * GameConfig.TILES_HIGH)
         this.cameras.main.roundPixels = true;
+
+        // draw the map
         this.drawMap()
     }
 
@@ -222,7 +66,7 @@ export default class MainGame extends Phaser.Scene {
     }
 
     listenInput(): void {
-        if (this.hero.isMoving || this.hero.isChangingDirections) return
+        if (this.gameState.hero.isMoving || this.gameState.hero.isChangingDirections) return
 
         const cursors = this.input.keyboard.createCursorKeys();
         const iter = [
@@ -235,35 +79,35 @@ export default class MainGame extends Phaser.Scene {
         for (let i = 0; i < iter.length; i++) {
             const { cursor, direction } = iter[i]
             if (cursor.isDown) {
-                const { x: dx, y: dy } = Direction.vector(this.hero.direction)
+                const { x: dx, y: dy } = Direction.vector(this.gameState.hero.direction)
                 const nextTilePosition = {
-                    x: this.hero.tileX() + dx,
-                    y: this.hero.tileY() + dy,
+                    x: this.gameState.hero.tileX() + dx,
+                    y: this.gameState.hero.tileY() + dy,
                 }
-                const nextOOB = outOfBounds(nextTilePosition.x, nextTilePosition.y, this.tilesWide, this.tilesHigh)
-                if (this.hero.direction === direction && !nextOOB) {
-                    this.hero.beginMove()
-                    this.heroSprite?.anims.play(this.hero.direction.toString())
-                    uncoverConnectedSafeTiles(this.map, this.hero.toTileX(), this.hero.toTileY())
+                const nextOOB = outOfBounds(nextTilePosition.x, nextTilePosition.y, GameConfig.TILES_WIDE, GameConfig.TILES_HIGH)
+                if (this.gameState.hero.direction === direction && !nextOOB) {
+                    this.gameState.hero.beginMove()
+                    this.displayState.heroSprite.anims.play(this.gameState.hero.direction.toString())
+                    uncoverConnectedSafeTiles(this.gameState.map, this.gameState.hero.toTileX(), this.gameState.hero.toTileY())
 
                     // if there is a key in the next tile, remove it
-                    const tile = this.map[this.hero.toTileY()][this.hero.toTileX()]
+                    const tile = this.gameState.map[this.gameState.hero.toTileY()][this.gameState.hero.toTileX()]
                     if (tile.key) {
                         tile.key = false
-                        const spriteMap = this.tileSpriteMap[this.hero.toTileY()][this.hero.toTileX()]
+                        const spriteMap = this.displayState.tileSpriteMap[this.gameState.hero.toTileY()][this.gameState.hero.toTileX()]
                         const key = spriteMap.key
                         key?.destroy()
                         spriteMap.key = null
-                        this.numKeysRetrieved += 1
-                        this.scoreDisplay?.setText(`${this.numKeysRetrieved}/${GameConfig.NUM_KEYS}`)
-                        if (this.numKeysRetrieved === GameConfig.NUM_KEYS) console.log("YOU WIN!")
+                        this.gameState.numKeysRetrieved += 1
+                        this.displayState.scoreDisplay?.setText(`${this.gameState.numKeysRetrieved}/${GameConfig.NUM_KEYS}`)
+                        if (this.gameState.numKeysRetrieved === GameConfig.NUM_KEYS) this.scene.start("winMenu")
                     }
                 }
                 else {
-                    this.hero.isChangingDirections = true
-                    this.time.delayedCall(150, () => { this.hero.isChangingDirections = false })
-                    this.hero.direction = direction
-                    this.heroSprite?.setFrame(playerDirectionFrameMapping[this.hero.direction])
+                    this.gameState.hero.isChangingDirections = true
+                    this.time.delayedCall(150, () => { this.gameState.hero.isChangingDirections = false })
+                    this.gameState.hero.direction = direction
+                    this.displayState.heroSprite.setFrame(playerDirectionFrameMapping[this.gameState.hero.direction])
                 }
                 return
             }
@@ -271,29 +115,28 @@ export default class MainGame extends Phaser.Scene {
     }
 
     moveHero(): void {
-        if (!this.hero.isMoving) return
+        if (!this.gameState.hero.isMoving) return
 
-        const { x: dx, y: dy } = Direction.vector(this.hero.direction)
-        this.hero.position = {
-            x: this.hero.position.x + dx * HERO_SPEED,
-            y: this.hero.position.y + dy * HERO_SPEED,
+        const { x: dx, y: dy } = Direction.vector(this.gameState.hero.direction)
+        this.gameState.hero.position = {
+            x: this.gameState.hero.position.x + dx * GameConfig.HERO_SPEED,
+            y: this.gameState.hero.position.y + dy * GameConfig.HERO_SPEED,
         }
 
-        if (isEqual(this.hero.position, this.hero.moveTo)) {
-            this.hero.isMoving = false
-            const standingFrame = this.heroSprite?.anims.currentAnim.frames[1].frame.name || 0
-            this.heroSprite?.anims.stop()
-            this.heroSprite?.setFrame(standingFrame);
-            const tile = this.map[this.hero.tileY()][this.hero.tileX()]
+        if (isEqual(this.gameState.hero.position, this.gameState.hero.moveTo)) {
+            this.gameState.hero.isMoving = false
+            const standingFrame = this.displayState.heroSprite.anims.currentAnim.frames[1].frame.name || 0
+            this.displayState.heroSprite.anims.stop()
+            this.displayState.heroSprite.setFrame(standingFrame);
+            const tile = this.gameState.map[this.gameState.hero.tileY()][this.gameState.hero.tileX()]
             if (tile.bomb) {
                 this.cameras.main.shake(250, 0.006)
-                this.livesRemaining -= 1
-                const heartToRemove = this.livesDisplay.pop()
+                this.gameState.livesRemaining -= 1
+                const heartToRemove = this.displayState.livesDisplay.pop()
                 heartToRemove?.destroy()
 
-                if (this.livesRemaining === 0) {
-                    // this.scene.restart()
-                    console.log("GAME OVER!")
+                if (this.gameState.livesRemaining === 0) {
+                    this.scene.start("loseMenu")
                 }
             }
         }
@@ -302,11 +145,11 @@ export default class MainGame extends Phaser.Scene {
 
     drawMap(): void {
         // draw map
-        for (let y = 0; y < this.tilesHigh; y++) {
-            for (let x = 0; x < this.tilesWide; x++) {
-                const tile = this.map[y][x]
+        for (let y = 0; y < GameConfig.TILES_HIGH; y++) {
+            for (let x = 0; x < GameConfig.TILES_WIDE; x++) {
+                const tile = this.gameState.map[y][x]
                 // remove the keySprite if the key is obtained
-                const { tile: tileSprite, key: keySprite, bomb: bombSprite} = this.tileSpriteMap[y][x]
+                const { tile: tileSprite, key: keySprite, bomb: bombSprite} = this.displayState.tileSpriteMap[y][x]
                 if (tile.uncovered) {
                     if (tile.bomb || !tile.numAdjBombs || tile.key) {
                         tileSprite.setFrame(grassTileFrameMapping.NORMAL)
@@ -326,20 +169,20 @@ export default class MainGame extends Phaser.Scene {
         }
 
         // draw hero
-        this.heroSprite?.setPosition(this.hero.position.x + this.tileSize / 2, this.hero.position.y + this.tileSize / 2)
+        this.displayState.heroSprite.setPosition(this.gameState.hero.position.x + GameConfig.TILE_SIZE / 2, this.gameState.hero.position.y + GameConfig.TILE_SIZE / 2)
 
         // reduce the alpha of text if the hero is in position 0,0
-        if(this.hero.moveTo.x === 0 && this.hero.moveTo.y === 0 && this.scoreDisplay) this.scoreDisplay.alpha = 0.7
-        else if (this.scoreDisplay) this.scoreDisplay.alpha = 1
+        if(this.gameState.hero.moveTo.x === 0 && this.gameState.hero.moveTo.y === 0 && this.displayState.scoreDisplay) this.displayState.scoreDisplay.alpha = 0.7
+        else if (this.displayState.scoreDisplay) this.displayState.scoreDisplay.alpha = 1
 
         // reduce the alpha of lives if the hero is in position 0,0
-        if(this.hero.toTileY() === 0 && [this.tilesWide - 1, this.tilesWide -2].includes(this.hero.toTileX())){
-            this.livesDisplay.forEach(heart => {
+        if(this.gameState.hero.toTileY() === 0 && [GameConfig.TILES_WIDE - 1, GameConfig.TILES_WIDE -2].includes(this.gameState.hero.toTileX())){
+            this.displayState.livesDisplay.forEach(heart => {
                 heart.alpha = 0.6
             })
         }
         else{
-            this.livesDisplay.forEach(heart => {
+            this.displayState.livesDisplay.forEach(heart => {
                 heart.alpha = 1
             })
         }
