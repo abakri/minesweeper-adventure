@@ -53,7 +53,7 @@ export default class winMenu extends Phaser.Scene {
         title.setCenterAlign()
 
         const paragraphStyle = { fontFamily: "arial", fontSize: "22px" }
-        const paragraphContent = `Great job! You found all the keys! ヾ(๑╹◡╹)ﾉ"\nYou were able to find all the keys!`
+        const paragraphContent = `Great job! You found all the keys! ヾ(๑╹◡╹)ﾉ"\nThank you for saving our city!`
         const paragraph = this.add.text(0, 0, paragraphContent, paragraphStyle)
         paragraph.setPosition((GameConfig.SCREEN_WIDTH / 2) - (paragraph.width / 2), 280)
         paragraph.setAlign("center")
